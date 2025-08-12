@@ -12,6 +12,7 @@ app.use(cors({
     origin: true,
     credentials: true
 }));
+const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
 
 app.use(express.json());
 app.use(express.static('public'));
