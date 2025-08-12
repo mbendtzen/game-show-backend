@@ -243,6 +243,27 @@ function handleMessage(ws, message) {
             handleManagerChanged(ws, message);
             break;
 
+            case 'GET_TEAMS':
+    const game = games.get(data.gameCode);
+    if (game) {
+        const teamsList = Array.from(game.teams.values()).map(team => ({
+            name: team.name,
+            members: team.members.length,
+            playerCount: team.members.length
+        }));
+        
+        ws.send(JSON.stringify({
+            type: 'TEAMS_LIST',
+            teams: teamsList
+        }));
+    } else {
+        ws.send(JSON.stringify({
+            type: 'ERROR',
+            message: 'Game not found'
+        }));
+    }
+    break;
+            
         case 'SCORE_UPDATED':
             handleScoreUpdated(ws, message);
             break;
