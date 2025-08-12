@@ -1,0 +1,29 @@
+{
+  "name": "get-in-the-game-show-server",
+  "version": "1.0.0",
+  "description": "WebSocket server backend for Get in the Game Show buzzer system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "echo 'Build complete'",
+    "vercel-build": "echo 'Vercel build complete'"
+  },
+  "keywords": [
+    "gameshow",
+    "websocket",
+    "realtime",
+    "buzzer",
+    "multiplayer"
+  ],
+  "author": "The Doctor of Fun",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
