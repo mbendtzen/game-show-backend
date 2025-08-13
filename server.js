@@ -227,9 +227,9 @@ function handleMessage(ws, message) {
             handleClearBuzzers(ws, message);
             break;
 
-        case 'CLEAR_LAST_BUZZ':
-            handleClearLastBuzz(ws, message);
-            break;
+        case 'CLEAR_PLAYER_BUZZ':
+    handleClearPlayerBuzz(ws, message);
+    break;
 
         case 'ENABLE_SCORING':
             handleEnableScoring(ws, message);
@@ -447,18 +447,17 @@ function handleClearBuzzers(ws, message) {
     console.log(`Buzzers cleared for game ${message.gameCode}`);
 }
 
-function handleClearLastBuzz(ws, message) {
+function handleClearPlayerBuzz(ws, message) {
     const game = games.get(message.gameCode);
     if (!game || connections.get(ws)?.type !== 'host') return;
-
-    if (game.buzzedPlayers.length > 0) {
-        const clearedBuzz = game.buzzedPlayers.pop();
+    
+    const { playerId } = message;
+    
+    // Find and remove the specific player from buzzed list
+    const buzzIndex = game.buzzedPlayers.findIndex(buzz => buzz.playerId === playerId);
+    if (buzzIndex !== -1) {
+        const clearedBuzz = game.buzzedPlayers.splice(buzzIndex, 1)[0];
         
-        sendToHost(message.gameCode, {
-            type: 'BUZZ_CLEARED',
-            clearedPlayer: clearedBuzz
-        });
-
         // Re-enable buzzer for cleared player's team
         connections.forEach((connInfo, playerWs) => {
             if (connInfo.gameCode === message.gameCode && 
@@ -469,6 +468,8 @@ function handleClearLastBuzz(ws, message) {
                 }));
             }
         });
+        
+        console.log(`Cleared buzz for player ${playerId} in game ${message.gameCode}`);
     }
 }
 
