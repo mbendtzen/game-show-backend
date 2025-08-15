@@ -421,7 +421,7 @@ function handlePlayerBuzz(ws, message) {
             timestamp: Date.now()
         });
 
-        // Lock out other team members
+       // Lock out other team members
         connections.forEach((connInfo, playerWs) => {
             if (connInfo.gameCode === gameCode && 
                 connInfo.type === 'player' && 
@@ -431,12 +431,10 @@ function handlePlayerBuzz(ws, message) {
                     type: 'BUZZ_RESPONSE',
                     playerId: connInfo.playerId,
                     success: false,
-                    reason: 'Teammate already buzzed'
+                    reason: 'Your teammate beat you to it!'
                 }));
             }
         });
-    }
-}
 
 function handleClearBuzzers(ws, message) {
     const game = games.get(message.gameCode);
