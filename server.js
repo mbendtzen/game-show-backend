@@ -259,6 +259,10 @@ function handleMessage(ws, message) {
             handlePlayerDisconnect(ws, message);
             break;
 
+            case 'GET_TEAMS':
+            handleGetTeams(ws, message);
+            break;
+            
         default:
             ws.send(JSON.stringify({
                 type: 'ERROR',
@@ -695,6 +699,32 @@ setInterval(() => {
     });
 }, oneHour);
 
+function handleGetTeams(ws, message) {
+    const game = games.get(message.gameCode);
+    if (!game) {
+        ws.send(JSON.stringify({
+            type: 'ERROR',
+            message: 'Game not found'
+        }));
+        return;
+    }
+
+    // Convert teams Map to array format expected by client
+    const teamsArray = [];
+    game.teams.forEach(team => {
+        teamsArray.push({
+            name: team.name,
+            members: team.members.length
+        });
+    });
+
+    ws.send(JSON.stringify({
+        type: 'TEAMS_LIST',
+        teams: teamsArray
+    }));
+
+    console.log(`Sent teams list for game ${message.gameCode}: ${teamsArray.length} teams`);
+}
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🎮 Get in the Game Show Server running on port ${PORT}`);
