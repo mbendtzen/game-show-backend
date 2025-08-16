@@ -394,7 +394,39 @@ function handleMessage(ws, message) {
 function handleCreateGame(ws, message) {
     let gameCode = message.gameCode || generateGameCode();
     
-    // Ensure unique game code
+    // If gameCode was provided, try to load existing game
+    if (message.gameCode) {
+        const existingGame = GameState.loadFromDatabase(message.gameCode);
+        if (existingGame) {
+            existingGame.hostConnection = ws;
+            games.set(gameCode, existingGame);
+            
+            connections.set(ws, {
+                type: 'host',
+                gameCode: gameCode,
+                hostId: message.hostId
+            });
+
+            ws.send(JSON.stringify({
+                type: 'GAME_CREATED',
+                gameCode: gameCode,
+                restored: true,
+                gameState: {
+                    currentGame: existingGame.currentGame,
+                    currentRound: existingGame.currentRound,
+                    games: existingGame.games,
+                    gameStarted: existingGame.gameStarted,
+                    teams: existingGame.getTeamsData(),
+                    buzzedPlayers: existingGame.buzzedPlayers
+                }
+            }));
+
+            console.log(`Game restored: ${gameCode}`);
+            return;
+        }
+    }
+    
+    // Ensure unique game code for new games
     while (games.has(gameCode)) {
         gameCode = generateGameCode();
     }
@@ -411,7 +443,8 @@ function handleCreateGame(ws, message) {
 
     ws.send(JSON.stringify({
         type: 'GAME_CREATED',
-        gameCode: gameCode
+        gameCode: gameCode,
+        restored: false
     }));
 
     console.log(`Game created: ${gameCode}`);
