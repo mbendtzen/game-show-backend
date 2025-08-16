@@ -150,6 +150,59 @@ class GameState {
     }
 }
 
+// --- Firebase Helpers ---
+// Save game state to Firebase
+function saveGameState(gameCode, gameState) {
+    try {
+        const plainState = {
+            gameCode: gameState.gameCode,
+            hostId: gameState.hostId,
+            currentGame: gameState.currentGame,
+            currentRound: gameState.currentRound,
+            games: gameState.games,
+            teams: Array.from(gameState.teams.values()),
+            players: Array.from(gameState.players.entries()),
+            buzzedPlayers: gameState.buzzedPlayers,
+            scoringEnabled: gameState.scoringEnabled,
+            gameStarted: gameState.gameStarted,
+            gameEnded: gameState.gameEnded,
+            createdAt: gameState.createdAt
+        };
+
+        return db.ref(`games/${gameCode}`).set(plainState);
+    } catch (err) {
+        console.error("Error saving game:", err);
+    }
+}
+
+// Load game state from Firebase
+async function loadGameState(gameCode) {
+    try {
+        const snapshot = await db.ref(`games/${gameCode}`).once('value');
+        if (!snapshot.exists()) return null;
+        const data = snapshot.val();
+
+        // Rebuild GameState object
+        const restored = new GameState(data.gameCode, data.hostId);
+        restored.currentGame = data.currentGame;
+        restored.currentRound = data.currentRound;
+        restored.games = data.games || [];
+        restored.teams = new Map((data.teams || []).map(team => [team.name, team]));
+        restored.players = new Map(data.players || []);
+        restored.buzzedPlayers = data.buzzedPlayers || [];
+        restored.scoringEnabled = data.scoringEnabled;
+        restored.gameStarted = data.gameStarted;
+        restored.gameEnded = data.gameEnded;
+        restored.createdAt = data.createdAt;
+
+        return restored;
+    } catch (err) {
+        console.error("Error loading game:", err);
+        return null;
+    }
+}
+// --- End Firebase Helpers ---
+
 // Utility Functions
 function generateGameCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
