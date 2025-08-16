@@ -372,15 +372,71 @@ function handleCreateGame(ws, message) {
 
 function handleJoinGame(ws, message) {
     const { gameCode, playerId, playerName, teamName, isManager } = message;
-    const game = games.get(gameCode);
+    let game = games.get(gameCode);
 
-    if (!game) {
-        ws.send(JSON.stringify({
-            type: 'ERROR',
-            message: 'Game not found'
-        }));
-        return;
-    }
+if (!game) {
+    // Try to load from Firebase
+    loadGameState(gameCode).then(restored => {
+        if (!restored) {
+            ws.send(JSON.stringify({
+                type: 'ERROR',
+                message: 'Game not found'
+            }));
+            return;
+        }
+        // Put restored game back into memory
+        games.set(gameCode, restored);
+        game = restored;
+
+        // Continue normal join process
+        finishJoin();
+    });
+} else {
+    finishJoin();
+}
+
+function finishJoin() {
+    // Add player to game
+    game.addPlayer(playerId, {
+        name: playerName,
+        teamName: teamName,
+        isManager: isManager,
+        connection: ws
+    });
+
+    connections.set(ws, {
+        type: 'player',
+        gameCode: gameCode,
+        playerId: playerId,
+        teamName: teamName
+    });
+
+    // Confirm join to player
+    ws.send(JSON.stringify({
+        type: 'GAME_JOINED',
+        gameCode: gameCode,
+        gameStarted: game.gameStarted,
+        currentGame: game.currentGame,
+        currentRound: game.currentRound,
+        games: game.games,
+        teams: game.getTeamsData(),
+        buzzedPlayers: game.buzzedPlayers,
+        restored: true
+    }));
+
+    // Notify host of new player
+    sendToHost(gameCode, {
+        type: 'PLAYER_JOINED',
+        playerId: playerId,
+        playerName: playerName,
+        teamName: teamName,
+        isManager: isManager,
+        teams: Array.from(game.teams.values())
+    });
+
+    console.log(`Player ${playerName} joined game ${gameCode} on team ${teamName}`);
+}
+
 
     // Add player to game
     game.addPlayer(playerId, {
