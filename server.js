@@ -351,6 +351,9 @@ function handleCreateGame(ws, message) {
     const gameState = new GameState(gameCode, message.hostId);
     gameState.hostConnection = ws;
     games.set(gameCode, gameState);
+        // Save new game to Firebase
+    saveGameState(gameCode, gameState);
+
 
     connections.set(ws, {
         type: 'host',
