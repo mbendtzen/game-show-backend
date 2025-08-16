@@ -21,9 +21,7 @@
 "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.14.2",
-    "cors": "^2.8.5",
-    "sqlite3": "^5.1.6",
-    "better-sqlite3": "^8.7.0"
+    "cors": "^2.8.5"
   },
   "engines": {
     "node": ">=18.0.0"
