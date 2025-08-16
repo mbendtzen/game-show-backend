@@ -152,13 +152,33 @@ class GameState {
         this.currentGame = 1;
         this.currentRound = 1;
         this.games = [];
-        this.teams = new Map(); // teamName -> team data
-        this.players = new Map(); // playerId -> player data
+        this.teams = new Map();
+        this.players = new Map();
         this.buzzedPlayers = [];
         this.scoringEnabled = false;
         this.gameStarted = false;
         this.gameEnded = false;
         this.createdAt = Date.now();
+        
+        // Save to database
+        this.saveToDatabase();
+    }
+
+    saveToDatabase() {
+        try {
+            statements.insertGame.run(
+                this.gameCode,
+                this.hostId,
+                this.currentGame,
+                this.currentRound,
+                JSON.stringify(this.games),
+                this.gameStarted ? 1 : 0,
+                this.gameEnded ? 1 : 0,
+                this.scoringEnabled ? 1 : 0
+            );
+        } catch (error) {
+            console.error('Error saving game to database:', error);
+        }
     }
 
     addPlayer(playerId, playerData) {
@@ -194,6 +214,28 @@ class GameState {
                 member.isManager = member.playerId === playerId;
             });
         }
+
+        // Save to database
+        try {
+            statements.insertPlayer.run(
+                playerId,
+                this.gameCode,
+                playerData.name,
+                playerData.teamName,
+                playerData.isManager ? 1 : 0,
+                1
+            );
+
+            statements.insertTeam.run(
+                this.gameCode,
+                playerData.teamName,
+                team.totalScore,
+                JSON.stringify(team.roundScores),
+                team.manager
+            );
+        } catch (error) {
+            console.error('Error saving player to database:', error);
+        }
     }
 
     removePlayer(playerId) {
@@ -211,11 +253,31 @@ class GameState {
             // Remove team if empty
             if (team.members.length === 0) {
                 this.teams.delete(player.teamName);
+            } else {
+                // Update team in database
+                try {
+                    statements.insertTeam.run(
+                        this.gameCode,
+                        player.teamName,
+                        team.totalScore,
+                        JSON.stringify(team.roundScores),
+                        team.manager
+                    );
+                } catch (error) {
+                    console.error('Error updating team in database:', error);
+                }
             }
         }
         
         this.players.delete(playerId);
         this.buzzedPlayers = this.buzzedPlayers.filter(b => b.playerId !== playerId);
+        
+        // Update player connection status in database
+        try {
+            statements.updatePlayerConnection.run(0, playerId);
+        } catch (error) {
+            console.error('Error updating player connection:', error);
+        }
     }
 
     handleBuzz(playerId) {
@@ -230,12 +292,27 @@ class GameState {
 
         if (teamHasBuzzed) return false;
 
-        this.buzzedPlayers.push({
+        const buzzData = {
             playerId: playerId,
             playerName: player.name,
             teamName: player.teamName,
             timestamp: Date.now()
-        });
+        };
+
+        this.buzzedPlayers.push(buzzData);
+
+        // Save buzz to database
+        try {
+            statements.insertBuzz.run(
+                this.gameCode,
+                buzzData.playerId,
+                buzzData.playerName,
+                buzzData.teamName,
+                buzzData.timestamp
+            );
+        } catch (error) {
+            console.error('Error saving buzz to database:', error);
+        }
 
         return true;
     }
@@ -252,8 +329,69 @@ class GameState {
         });
         return teamsArray;
     }
-}
 
+    static loadFromDatabase(gameCode) {
+        try {
+            const gameData = statements.getGame.get(gameCode);
+            if (!gameData) return null;
+
+            const gameState = new GameState(gameCode, gameData.host_id);
+            gameState.currentGame = gameData.current_game;
+            gameState.currentRound = gameData.current_round;
+            gameState.games = gameData.games_data ? JSON.parse(gameData.games_data) : [];
+            gameState.gameStarted = gameData.game_started === 1;
+            gameState.gameEnded = gameData.game_ended === 1;
+            gameState.scoringEnabled = gameData.scoring_enabled === 1;
+
+            // Load teams
+            const teams = statements.getTeams.all(gameCode);
+            teams.forEach(team => {
+                gameState.teams.set(team.team_name, {
+                    name: team.team_name,
+                    members: [],
+                    totalScore: team.total_score,
+                    roundScores: team.round_scores ? JSON.parse(team.round_scores) : [],
+                    manager: team.manager_id
+                });
+            });
+
+            // Load players
+            const players = statements.getPlayers.all(gameCode);
+            players.forEach(player => {
+                gameState.players.set(player.player_id, {
+                    name: player.player_name,
+                    teamName: player.team_name,
+                    isManager: player.is_manager === 1,
+                    connection: null
+                });
+
+                // Add to team members
+                if (gameState.teams.has(player.team_name)) {
+                    const team = gameState.teams.get(player.team_name);
+                    team.members.push({
+                        playerId: player.player_id,
+                        name: player.player_name,
+                        isManager: player.is_manager === 1
+                    });
+                }
+            });
+
+            // Load buzzes
+            const buzzes = statements.getBuzzes.all(gameCode);
+            gameState.buzzedPlayers = buzzes.map(buzz => ({
+                playerId: buzz.player_id,
+                playerName: buzz.player_name,
+                teamName: buzz.team_name,
+                timestamp: buzz.timestamp
+            }));
+
+            return gameState;
+        } catch (error) {
+            console.error('Error loading game from database:', error);
+            return null;
+        }
+    }
+}
 // Utility Functions
 function generateGameCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
