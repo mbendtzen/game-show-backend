@@ -524,6 +524,8 @@ function handleGameStarted(ws, message) {
     game.currentGame = message.currentGame;
     game.currentRound = message.currentRound;
 
+  game.saveToDatabase();
+  
     broadcast(message.gameCode, {
         type: 'GAME_STARTED',
         games: message.games,
@@ -542,6 +544,8 @@ function handleRoundUpdate(ws, message) {
     game.currentRound = message.currentRound;
     game.scoringEnabled = false;
 
+  game.saveToDatabase();
+  
     broadcast(message.gameCode, {
         type: 'ROUND_UPDATE',
         currentGame: message.currentGame,
@@ -606,7 +610,12 @@ function handleClearBuzzers(ws, message) {
     if (!game || connections.get(ws)?.type !== 'host') return;
 
     game.buzzedPlayers = [];
-
+// Clear buzzes from database
+    try {
+        statements.clearBuzzes.run(message.gameCode);
+    } catch (error) {
+        console.error('Error clearing buzzes from database:', error);
+    }
     broadcast(message.gameCode, {
         type: 'CLEAR_BUZZERS'
     }, ws);
@@ -624,7 +633,13 @@ function handleClearPlayerBuzz(ws, message) {
     const buzzIndex = game.buzzedPlayers.findIndex(buzz => buzz.playerId === playerId);
     if (buzzIndex !== -1) {
         const clearedBuzz = game.buzzedPlayers.splice(buzzIndex, 1)[0];
-        
+        // Clear from database
+        try {
+            statements.clearPlayerBuzz.run(message.gameCode, playerId);
+        } catch (error) {
+            console.error('Error clearing player buzz from database:', error);
+        }
+      
         // Re-enable buzzer for cleared player's team
         connections.forEach((connInfo, playerWs) => {
             if (connInfo.gameCode === message.gameCode && 
@@ -645,7 +660,7 @@ function handleEnableScoring(ws, message) {
     if (!game || connections.get(ws)?.type !== 'host') return;
 
     game.scoringEnabled = true;
-
+game.saveToDatabase();
     broadcast(message.gameCode, {
         type: 'ENABLE_SCORING'
     }, ws);
