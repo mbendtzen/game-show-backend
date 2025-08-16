@@ -9,6 +9,124 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
+// Database Setup
+const dbPath = process.env.NODE_ENV === 'production' ? '/tmp/gameshow.db' : './gameshow.db';
+const db = new Database(dbPath);
+
+// Create tables if they don't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS games (
+    game_code TEXT PRIMARY KEY,
+    host_id TEXT NOT NULL,
+    current_game INTEGER DEFAULT 1,
+    current_round INTEGER DEFAULT 1,
+    games_data TEXT,
+    game_started INTEGER DEFAULT 0,
+    game_ended INTEGER DEFAULT 0,
+    scoring_enabled INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_code TEXT NOT NULL,
+    team_name TEXT NOT NULL,
+    total_score INTEGER DEFAULT 0,
+    round_scores TEXT,
+    manager_id TEXT,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (game_code) REFERENCES games (game_code),
+    UNIQUE(game_code, team_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS players (
+    player_id TEXT PRIMARY KEY,
+    game_code TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    team_name TEXT NOT NULL,
+    is_manager INTEGER DEFAULT 0,
+    is_connected INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (game_code) REFERENCES games (game_code)
+  );
+
+  CREATE TABLE IF NOT EXISTS buzzes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_code TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    team_name TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    FOREIGN KEY (game_code) REFERENCES games (game_code)
+  );
+`);
+
+// Prepared statements for better performance
+const statements = {
+  insertGame: db.prepare(`
+    INSERT OR REPLACE INTO games 
+    (game_code, host_id, current_game, current_round, games_data, game_started, game_ended, scoring_enabled, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+  `),
+  
+  getGame: db.prepare(`
+    SELECT * FROM games WHERE game_code = ?
+  `),
+  
+  insertTeam: db.prepare(`
+    INSERT OR REPLACE INTO teams 
+    (game_code, team_name, total_score, round_scores, manager_id) 
+    VALUES (?, ?, ?, ?, ?)
+  `),
+  
+  getTeams: db.prepare(`
+    SELECT * FROM teams WHERE game_code = ?
+  `),
+  
+  insertPlayer: db.prepare(`
+    INSERT OR REPLACE INTO players 
+    (player_id, game_code, player_name, team_name, is_manager, is_connected) 
+    VALUES (?, ?, ?, ?, ?, ?)
+  `),
+  
+  getPlayers: db.prepare(`
+    SELECT * FROM players WHERE game_code = ?
+  `),
+  
+  updatePlayerConnection: db.prepare(`
+    UPDATE players SET is_connected = ? WHERE player_id = ?
+  `),
+  
+  insertBuzz: db.prepare(`
+    INSERT INTO buzzes (game_code, player_id, player_name, team_name, timestamp) 
+    VALUES (?, ?, ?, ?, ?)
+  `),
+  
+  getBuzzes: db.prepare(`
+    SELECT * FROM buzzes WHERE game_code = ? ORDER BY timestamp ASC
+  `),
+  
+  clearBuzzes: db.prepare(`
+    DELETE FROM buzzes WHERE game_code = ?
+  `),
+  
+  clearPlayerBuzz: db.prepare(`
+    DELETE FROM buzzes WHERE game_code = ? AND player_id = ?
+  `),
+  
+  deleteGame: db.prepare(`
+    DELETE FROM games WHERE game_code = ?
+  `),
+  
+  deleteGameData: db.prepare(`
+    DELETE FROM teams WHERE game_code = ?;
+    DELETE FROM players WHERE game_code = ?;
+    DELETE FROM buzzes WHERE game_code = ?;
+  `)
+};
+
+console.log('Database initialized successfully');
 // Enable CORS for all routes
 app.use(cors({
     origin: true,
