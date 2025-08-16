@@ -3,6 +3,20 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const cors = require('cors');
+// --- Firebase Setup ---
+const admin = require('firebase-admin');
+
+// Parse the service account JSON from environment variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DATABASE_URL
+});
+
+const db = admin.database();
+// --- End Firebase Setup ---
 
 const app = express();
 const server = http.createServer(app);
