@@ -452,14 +452,21 @@ function handleCreateGame(ws, message) {
 
 function handleJoinGame(ws, message) {
     const { gameCode, playerId, playerName, teamName, isManager } = message;
-    const game = games.get(gameCode);
+    let game = games.get(gameCode);
 
+    // If game not in memory, try to load from database
     if (!game) {
-        ws.send(JSON.stringify({
-            type: 'ERROR',
-            message: 'Game not found'
-        }));
-        return;
+        game = GameState.loadFromDatabase(gameCode);
+        if (game) {
+            games.set(gameCode, game);
+            console.log(`Game loaded from database: ${gameCode}`);
+        } else {
+            ws.send(JSON.stringify({
+                type: 'ERROR',
+                message: 'Game not found'
+            }));
+            return;
+        }
     }
 
     // Add player to game
@@ -484,7 +491,10 @@ function handleJoinGame(ws, message) {
         gameStarted: game.gameStarted,
         currentGame: game.currentGame,
         currentRound: game.currentRound,
-        games: game.games
+        games: game.games,
+        teams: game.getTeamsData(),
+        buzzedPlayers: game.buzzedPlayers,
+        restored: true
     }));
 
     // Notify host of new player
