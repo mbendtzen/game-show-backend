@@ -169,7 +169,8 @@ function saveGameState(gameCode, gameState) {
             createdAt: gameState.createdAt
         };
 
-        return db.ref(`games/${gameCode}`).set(plainState);
+plainState.expiresAt = Date.now() + (4 * 60 * 60 * 1000); // expire in 4 hours
+return db.ref(`games/${gameCode}`).set(plainState);
     } catch (err) {
         console.error("Error saving game:", err);
     }
@@ -180,7 +181,13 @@ async function loadGameState(gameCode) {
     try {
         const snapshot = await db.ref(`games/${gameCode}`).once('value');
         if (!snapshot.exists()) return null;
-        const data = snapshot.val();
+const data = snapshot.val();
+
+// Ignore if expired
+if (data.expiresAt && Date.now() > data.expiresAt) {
+    console.log(`Game ${gameCode} expired, ignoring restore`);
+    return null;
+}
 
         // Rebuild GameState object
         const restored = new GameState(data.gameCode, data.hostId);
