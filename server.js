@@ -339,6 +339,10 @@ function handleMessage(ws, message) {
             handleGetTeams(ws, message);
             break;
             
+        case 'HOST_REJOIN':
+            handleHostRejoin(ws, message);
+            break;
+  
         default:
             ws.send(JSON.stringify({
                 type: 'ERROR',
@@ -489,6 +493,45 @@ function finishJoin() {
 function handleRejoinGame(ws, message) {
     // Same as join game - server handles rejoins the same way
     handleJoinGame(ws, message);
+}
+function handleHostRejoin(ws, message) {
+    const { gameCode, hostId } = message;
+    let game = games.get(gameCode);
+
+    const attachAndSync = (g) => {
+        g.hostConnection = ws;
+        connections.set(ws, { type: 'host', gameCode, hostId });
+
+        // send full state back to host so UI can rebuild
+        ws.send(JSON.stringify({
+            type: 'HOST_SYNC',
+            gameCode: g.gameCode,
+            gameStarted: g.gameStarted,
+            currentGame: g.currentGame,
+            currentRound: g.currentRound,
+            games: g.games,
+            teams: g.getTeamsData(),
+            buzzedPlayers: g.buzzedPlayers
+        }));
+    };
+
+    if (game) {
+        attachAndSync(game);
+        return;
+    }
+
+    // Try Firebase restore if not in memory
+    loadGameState(gameCode).then(restored => {
+        if (!restored) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Game not found' }));
+            return;
+        }
+        games.set(gameCode, restored);
+        attachAndSync(restored);
+    }).catch(err => {
+        console.error('HOST_REJOIN error:', err);
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Host rejoin failed' }));
+    });
 }
 
 function handleGameStarted(ws, message) {
