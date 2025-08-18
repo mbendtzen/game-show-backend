@@ -385,109 +385,89 @@ function handleJoinGame(ws, message) {
     const { gameCode, playerId, playerName, teamName, isManager } = message;
     let game = games.get(gameCode);
 
-if (!game) {
-    // Try to load from Firebase
-    loadGameState(gameCode).then(restored => {
-        if (!restored) {
+    if (!game) {
+        // Try to load from Firebase
+        loadGameState(gameCode).then(restored => {
+            if (!restored) {
+                ws.send(JSON.stringify({
+                    type: 'ERROR',
+                    message: 'Game not found'
+                }));
+                return;
+            }
+            // Put restored game back into memory
+            games.set(gameCode, restored);
+            game = restored;
+
+            // Continue normal join process
+            finishJoin();
+        });
+    } else {
+        finishJoin();
+    }
+
+    function finishJoin() {
+        // 🔒 Check if someone with this name is already on the team
+        const teamPlayers = Object.values(game.teams.get(teamName) || {});
+        const existingPlayer = teamPlayers.find(
+            p => p.name.toLowerCase() === playerName.toLowerCase()
+        );
+
+        if (existingPlayer) {
+            // Send conflict back only to this socket
             ws.send(JSON.stringify({
-                type: 'ERROR',
-                message: 'Game not found'
+                type: 'NAME_CONFLICT',
+                name: playerName,
+                team: teamName
             }));
             return;
         }
-        // Put restored game back into memory
-        games.set(gameCode, restored);
-        game = restored;
 
-        // Continue normal join process
-        finishJoin();
-    });
-} else {
-    finishJoin();
+        // ✅ Otherwise, add player to game
+        game.addPlayer(playerId, {
+            name: playerName,
+            teamName: teamName,
+            isManager: isManager,
+            connection: ws
+        });
+
+        connections.set(ws, {
+            type: 'player',
+            gameCode: gameCode,
+            playerId: playerId,
+            teamName: teamName
+        });
+
+        // Confirm join to player
+        ws.send(JSON.stringify({
+            type: 'GAME_JOINED',
+            gameCode: gameCode,
+            gameStarted: game.gameStarted,
+            currentGame: game.currentGame,
+            currentRound: game.currentRound,
+            games: game.games,
+            teams: game.getTeamsData(),
+            buzzedPlayers: game.buzzedPlayers,
+            restored: true
+        }));
+
+        // Notify host of new player
+        sendToHost(gameCode, {
+            type: 'PLAYER_JOINED',
+            playerId: playerId,
+            playerName: playerName,
+            teamName: teamName,
+            isManager: isManager,
+            teams: Array.from(game.teams.values())
+        });
+
+        console.log(`Player ${playerName} joined game ${gameCode} on team ${teamName}`);
+    }
 }
 
-function finishJoin() {
-    // Add player to game
-    game.addPlayer(playerId, {
-        name: playerName,
-        teamName: teamName,
-        isManager: isManager,
-        connection: ws
-    });
-
-    connections.set(ws, {
-        type: 'player',
-        gameCode: gameCode,
-        playerId: playerId,
-        teamName: teamName
-    });
-
-    // Confirm join to player
-    ws.send(JSON.stringify({
-        type: 'GAME_JOINED',
-        gameCode: gameCode,
-        gameStarted: game.gameStarted,
-        currentGame: game.currentGame,
-        currentRound: game.currentRound,
-        games: game.games,
-        teams: game.getTeamsData(),
-        buzzedPlayers: game.buzzedPlayers,
-        restored: true
-    }));
-
-    // Notify host of new player
-    sendToHost(gameCode, {
-        type: 'PLAYER_JOINED',
-        playerId: playerId,
-        playerName: playerName,
-        teamName: teamName,
-        isManager: isManager,
-        teams: Array.from(game.teams.values())
-    });
-
-    console.log(`Player ${playerName} joined game ${gameCode} on team ${teamName}`);
-}
-
-
-    // Add player to game
-    game.addPlayer(playerId, {
-        name: playerName,
-        teamName: teamName,
-        isManager: isManager,
-        connection: ws
-    });
-
-    connections.set(ws, {
-        type: 'player',
-        gameCode: gameCode,
-        playerId: playerId,
-        teamName: teamName
-    });
-
-    // Confirm join to player
-    ws.send(JSON.stringify({
-        type: 'GAME_JOINED',
-        gameCode: gameCode,
-        gameStarted: game.gameStarted,
-        currentGame: game.currentGame,
-        currentRound: game.currentRound,
-        games: game.games,
-        teams: game.getTeamsData(),
-        buzzedPlayers: game.buzzedPlayers,
-        restored: true
-    }));
-
-    // Notify host of new player
-    sendToHost(gameCode, {
-        type: 'PLAYER_JOINED',
-        playerId: playerId,
-        playerName: playerName,
-        teamName: teamName,
-        isManager: isManager,
-        teams: Array.from(game.teams.values())
-    });
-
-    console.log(`Player ${playerName} joined game ${gameCode} on team ${teamName}`);
+function handleRejoinGame(ws, message) {
+    // For now, treat rejoin same as join
+    handleJoinGame(ws, message);
 }
 
 function handleRejoinGame(ws, message) {
