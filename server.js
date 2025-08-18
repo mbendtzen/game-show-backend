@@ -354,9 +354,110 @@ function handleJoinGame(ws, message) {
 }
 
 function handleRejoinGame(ws, message) {
-    // Same as join game - server handles rejoins the same way
-    handleJoinGame(ws, message);
+    const { gameCode, playerId, playerName, teamName, isManager } = message;
+    const game = games.get(gameCode);
+    if (!game) {
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Game not found' }));
+        return;
+    }
+
+    // make sure team exists
+    if (!game.teams.has(teamName)) {
+        game.teams.set(teamName, {
+            name: teamName,
+            members: [],
+            totalScore: 0,
+            roundScores: [],
+            manager: null
+        });
+    }
+
+    const team = game.teams.get(teamName);
+
+    // check if this playerId is already known
+    const existingIdx = team.members.findIndex(m => m.playerId === playerId);
+
+    if (existingIdx !== -1) {
+        // reconnect existing player
+        const existingMember = team.members[existingIdx];
+        connections.set(ws, {
+            type: 'player',
+            gameCode,
+            playerId,
+            teamName
+        });
+
+        // update their record in players map
+        const p = game.players.get(playerId);
+        if (p) {
+            p.connection = ws;
+        }
+
+        // confirm back to player
+        ws.send(JSON.stringify({
+            type: 'GAME_JOINED',
+            gameCode: gameCode,
+            gameStarted: game.gameStarted,
+            currentGame: game.currentGame,
+            currentRound: game.currentRound,
+            games: game.games,
+            teams: game.getTeamsData(),
+            buzzedPlayers: game.buzzedPlayers,
+            restored: true
+        }));
+
+        // let host know they’re back
+        sendToHost(gameCode, {
+            type: 'PLAYER_REJOINED',
+            playerId,
+            playerName: existingMember.name,
+            teamName,
+            teams: Array.from(game.teams.values())
+        });
+
+        console.log(`Rejoined: ${playerName} (${playerId}) to ${teamName} in ${gameCode}`);
+        return;
+    }
+
+    // if somehow not found, just add them fresh
+    game.addPlayer(playerId, {
+        name: playerName,
+        teamName: teamName,
+        isManager: isManager,
+        connection: ws
+    });
+
+    connections.set(ws, {
+        type: 'player',
+        gameCode: gameCode,
+        playerId: playerId,
+        teamName: teamName
+    });
+
+    ws.send(JSON.stringify({
+        type: 'GAME_JOINED',
+        gameCode: gameCode,
+        gameStarted: game.gameStarted,
+        currentGame: game.currentGame,
+        currentRound: game.currentRound,
+        games: game.games,
+        teams: game.getTeamsData(),
+        buzzedPlayers: game.buzzedPlayers,
+        restored: true
+    }));
+
+    sendToHost(gameCode, {
+        type: 'PLAYER_JOINED',
+        playerId: playerId,
+        playerName: playerName,
+        teamName: teamName,
+        isManager: isManager,
+        teams: Array.from(game.teams.values())
+    });
+
+    console.log(`Rejoined-as-new: ${playerName} (${playerId}) to ${teamName} in ${gameCode}`);
 }
+
 
 function handleGameStarted(ws, message) {
     const game = games.get(message.gameCode);
