@@ -342,7 +342,58 @@ function handleMessage(ws, message) {
         case 'HOST_REJOIN':
             handleHostRejoin(ws, message);
             break;
-  
+
+                    case 'REJOIN_CONFIRM':
+            {
+                const { gameCode, playerName, teamName } = message;
+                let game = games.get(gameCode);
+
+                if (!game) {
+                    ws.send(JSON.stringify({
+                        type: 'ERROR',
+                        message: 'Game not found for rejoin'
+                    }));
+                    break;
+                }
+
+                // Find the existing player object by name
+                const teamPlayers = Object.values(game.teams.get(teamName) || {});
+                const existingPlayer = teamPlayers.find(
+                    p => p.name.toLowerCase() === playerName.toLowerCase()
+                );
+
+                if (existingPlayer) {
+                    // Update socket reference
+                    existingPlayer.connection = ws;
+
+                    connections.set(ws, {
+                        type: 'player',
+                        gameCode: gameCode,
+                        playerId: existingPlayer.id,
+                        teamName: teamName
+                    });
+
+                    // Confirm rejoin back to this socket
+                    ws.send(JSON.stringify({
+                        type: 'GAME_JOINED',
+                        gameCode: gameCode,
+                        gameStarted: game.gameStarted,
+                        currentGame: game.currentGame,
+                        currentRound: game.currentRound,
+                        games: game.games,
+                        teams: game.getTeamsData(),
+                        buzzedPlayers: game.buzzedPlayers,
+                        restored: true
+                    }));
+
+                    console.log(`Player ${playerName} rejoined game ${gameCode} on team ${teamName}`);
+                } else {
+                    // fallback: treat as fresh join
+                    handleJoinGame(ws, message);
+                }
+            }
+            break;
+
         default:
             ws.send(JSON.stringify({
                 type: 'ERROR',
