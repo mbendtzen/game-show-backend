@@ -209,6 +209,10 @@ function handleMessage(ws, message) {
             handleJoinGame(ws, message);
             break;
 
+                case 'CLAIM_NAME':
+            handleClaimName(ws, message);
+            break;
+
         case 'REJOIN_GAME':
             handleRejoinGame(ws, message);
             break;
@@ -311,6 +315,24 @@ function handleJoinGame(ws, message) {
         }));
         return;
     }
+    // --- NAME CONFLICT CHECK (same team, same name, different playerId) ---
+    const team = game.teams.get(teamName);
+    if (team) {
+        const sameNameMember = team.members.find(
+            m => m.name.trim().toLowerCase() === playerName.trim().toLowerCase()
+        );
+        if (sameNameMember && sameNameMember.playerId !== playerId) {
+            // Tell client there's a conflict
+            ws.send(JSON.stringify({
+                type: 'NAME_CONFLICT',
+                gameCode,
+                teamName,
+                playerName,
+                existingPlayerId: sameNameMember.playerId
+            }));
+            return; // stop here, don’t add them yet
+        }
+    }
 
     // Add player to game
     game.addPlayer(playerId, {
@@ -351,6 +373,66 @@ function handleJoinGame(ws, message) {
     });
 
     console.log(`Player ${playerName} joined game ${gameCode} on team ${teamName}`);
+}
+
+function handleClaimName(ws, message) {
+    const { gameCode, teamName, playerName } = message;
+    const game = games.get(gameCode);
+    if (!game) {
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Game not found' }));
+        return;
+    }
+
+    const team = game.teams.get(teamName);
+    if (!team) {
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Team not found' }));
+        return;
+    }
+
+    const existing = team.members.find(
+        m => m.name.trim().toLowerCase() === playerName.trim().toLowerCase()
+    );
+    if (!existing) {
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Original player not found to claim' }));
+        return;
+    }
+
+    // Re-bind this connection to the existing player
+    connections.set(ws, {
+        type: 'player',
+        gameCode,
+        playerId: existing.playerId,
+        teamName
+    });
+
+    const p = game.players.get(existing.playerId);
+    if (p) {
+        p.connection = ws;
+    }
+
+    // Confirm join
+    ws.send(JSON.stringify({
+        type: 'GAME_JOINED',
+        gameCode: gameCode,
+        gameStarted: game.gameStarted,
+        currentGame: game.currentGame,
+        currentRound: game.currentRound,
+        games: game.games,
+        teams: game.getTeamsData(),
+        buzzedPlayers: game.buzzedPlayers,
+        restored: true
+    }));
+
+    // Let host know the player is back
+    sendToHost(gameCode, {
+        type: 'PLAYER_REJOINED',
+        playerId: existing.playerId,
+        playerName: existing.name,
+        teamName,
+        teams: Array.from(game.teams.values())
+    });
+
+    console.log(`Player re-claimed name: ${playerName} (${existing.playerId}) on team ${teamName} in game ${gameCode}`);
 }
 
 function handleRejoinGame(ws, message) {
